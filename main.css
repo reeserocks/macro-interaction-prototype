@@ -1,0 +1,59 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+
+}
+
+html,
+body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+body {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+.instructions-container {
+    flex: 0 0 auto;
+    text-align: center;
+}
+
+.video-container {
+    flex: 1 1 0;
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+
+#video,
+#pose-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: scaleX(-1);
+    object-fit: cover;
+}
+
+.tests-container {
+    flex: 0 0 auto;
+    text-align: center;
+}
+
+.tests-container ul {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem 2rem;
+    list-style: none;
+}
