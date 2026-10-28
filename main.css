@@ -1,59 +1,104 @@
 * {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 :root {
-
 }
 
 html,
 body {
-    height: 100%;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 body {
-    height: 100vh;
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 .instructions-container {
-    flex: 0 0 auto;
-    text-align: center;
+  flex: 0 0 auto;
+  text-align: center;
 }
 
 .video-container {
-    flex: 1 1 0;
-    position: relative;
-    width: 100%;
-    overflow: hidden;
+  flex: 1 1 0;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
 }
 
 #video,
 #pose-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    transform: scaleX(-1);
-    object-fit: cover;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1);
+  object-fit: cover;
+}
+
+#video {
+  z-index: 0;
+}
+
+#pose-canvas {
+  z-index: 1;
+}
+
+#test-feedback {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 2;
+  width: min(280px, calc(100% - 2rem));
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #000;
+  font-size: clamp(0.9rem, 1.6vw, 1rem);
+  line-height: 1.4;
+  white-space: pre-line;
+  max-height: 45%;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 
 .tests-container {
-    flex: 0 0 auto;
-    text-align: center;
+  flex: 0 0 auto;
+  text-align: center;
 }
 
 .tests-container ul {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 1rem 2rem;
-    list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem 2rem;
+  list-style: none;
+}
+
+.tests-container li {
+  cursor: pointer;
+}
+
+.tests-container li:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+@media (max-width: 520px) {
+  #test-feedback {
+    right: 0.6rem;
+    bottom: 0.6rem;
+    width: min(230px, calc(100% - 1.2rem));
+    padding: 0.7rem 0.8rem;
+  }
 }
