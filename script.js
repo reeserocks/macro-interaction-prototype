@@ -46,11 +46,6 @@ function setCurrentTest(testName) {
 
   instructionsElement.textContent = TEST_INFO[currentTest].instructions;
   feedbackElement.textContent = TEST_INFO[currentTest].startMessage;
-
-  console.log(
-    `[${TEST_INFO[currentTest].label}] Ready.`,
-    TEST_INFO[currentTest].instructions,
-  );
 }
 
 function recordResult(result) {

@@ -9,22 +9,18 @@ import {
 } from "./pose_math.js";
 
 const PASS_THRESHOLD = 85;
-const STEP_TARGET = 18;
-const WALK_TIMEOUT_MS = 90000;
-const TURN_WAIT_MS = 10000;
+const STEP_TARGET = 8;
+const STEPS_BEFORE_TURN = 4;
 const ONE_LEG_TARGET_MS = 30000;
-const ONE_LEG_TIMEOUT_MS = 45000;
 const ROMBERG_TARGET_MS = 30000;
-const ROMBERG_TIMEOUT_MS = 45000;
 const FINGER_TARGET = 4;
-const FINGER_TIMEOUT_MS = 30000;
 
 export const TEST_INFO = {
   walkAndTurn: {
     label: "Walk-and-Turn",
     instructions:
-      "Walk forward with clear alternating steps. After 9 steps, pivot briefly to face sideways, then take 9 more steps.",
-    startMessage: "Start walking forward. I'll count your steps.",
+      "Turn to the side and walk forward with clear alternating steps. After 4 steps, pivot to face the other direction, then take 4 more steps.",
+    startMessage: "Turn to the side so your body is in profile.",
   },
   oneLegStand: {
     label: "One-Leg Stand",
@@ -35,7 +31,7 @@ export const TEST_INFO = {
   romberg: {
     label: "Romberg Balance",
     instructions:
-      "Stand with your feet together and stay as still as you can for 30 seconds. Keep your eyes open for this webcam version.",
+      "Stand with your feet together, close your eyes, and stay as still as you can. Open your eyes and resume a natural resting stance when you think 30 seconds have passed.",
     startMessage: "Bring your feet together and hold still.",
   },
   fingerToNose: {
@@ -50,10 +46,8 @@ export const TEST_INFO = {
 export function createTestState(testName) {
   return {
     testName,
-    startedAt: null,
     done: false,
     lastLoggedBucket: -1,
-    totalFrames: 0,
     footBaseline: {
       left: null,
       right: null,
@@ -64,17 +58,20 @@ export function createTestState(testName) {
     },
     lastStepSide: null,
     stepCount: 0,
-    phase: "outbound",
+    phase: "positioning",
     turnCueFrames: 0,
+    turnSawFront: false,
     turnDetected: false,
-    turnWaitStarted: null,
     holdStart: null,
     maxHoldMs: 0,
     raisedFrames: 0,
     armsAtSideFrames: 0,
     feetTogetherFrames: 0,
     stableFrames: 0,
+    totalFrames: 0,
     swayBaseline: null,
+    holdInterrupted: false,
+    oneLegInterrupted: false,
     handAway: {
       left: false,
       right: false,
@@ -135,16 +132,39 @@ function makeResult(progress, scorePercent, done, detail, feedback) {
   };
 }
 
-function evaluateWalkAndTurn(
-  landmarks,
-  state,
-  metrics,
-  now,
-  width,
-  height,
-  elapsed,
-) {
+function evaluateWalkAndTurn(landmarks, state, metrics, now, width, height) {
+  const sideOn = isSideOn(landmarks, metrics, width, height);
+
   const events = updateFootEvents(landmarks, state, metrics, width, height);
+
+  if (state.phase === "positioning") {
+    if (sideOn) {
+      state.turnCueFrames += 1;
+    } else {
+      state.turnCueFrames = 0;
+    }
+
+    if (state.turnCueFrames >= 3) {
+      state.phase = "outbound";
+      state.turnCueFrames = 0;
+
+      return makeResult(
+        0,
+        0,
+        false,
+        "Side-facing starting position detected.",
+        "Good! Take your first 4 steps forward.",
+      );
+    }
+
+    return makeResult(
+      0,
+      0,
+      false,
+      "Waiting for a side-facing position.",
+      "Turn to the side so your body is in profile.",
+    );
+  }
 
   for (const side of events) {
     if (state.phase !== "outbound" && state.phase !== "return") {
@@ -158,72 +178,62 @@ function evaluateWalkAndTurn(
     state.lastStepSide = side;
     state.stepCount = Math.min(STEP_TARGET, state.stepCount + 1);
 
-    if (state.phase === "outbound" && state.stepCount >= 9) {
+    if (state.phase === "outbound" && state.stepCount >= STEPS_BEFORE_TURN) {
       state.phase = "waitingForTurn";
-      state.turnWaitStarted = now;
+      state.turnCueFrames = 0;
+      state.turnSawFront = false;
     }
   }
 
   if (state.phase === "waitingForTurn") {
-    if (isSideOn(landmarks, metrics, width, height)) {
-      state.turnCueFrames += 1;
-    } else {
+    if (!sideOn) {
+      state.turnSawFront = true;
       state.turnCueFrames = 0;
-    }
+    } else if (state.turnSawFront) {
+      state.turnCueFrames += 1;
 
-    if (state.turnCueFrames >= 3) {
-      state.turnDetected = true;
-      state.phase = "return";
-      state.turnWaitStarted = null;
+      if (state.turnCueFrames >= 3) {
+        state.turnDetected = true;
+        state.phase = "return";
+        state.turnCueFrames = 0;
+      }
     }
   }
 
   const stepRatio = Math.min(state.stepCount / STEP_TARGET, 1);
+
   const score = stepRatio * 75 + (state.turnDetected ? 25 : 0);
-  const progress = stepRatio * 75 + (state.turnDetected ? 25 : 0);
 
-  const turnTimedOut =
-    state.phase === "waitingForTurn" &&
-    state.turnWaitStarted !== null &&
-    now - state.turnWaitStarted >= TURN_WAIT_MS;
-
+  const progress = score;
   const complete = state.stepCount >= STEP_TARGET && state.turnDetected;
-  const timedOut = elapsed >= WALK_TIMEOUT_MS || turnTimedOut;
 
   const detail = complete
-    ? "All 18 alternating foot lifts and a turn were detected."
-    : turnTimedOut
-      ? "The turn was not detected after the ninth step."
-      : "The walk-and-turn time limit was reached.";
+    ? "All 8 alternating foot lifts and a turn were detected."
+    : "Walk-and-Turn sequence is in progress.";
 
   let feedback;
 
   if (complete) {
     feedback = "Walk-and-Turn complete!";
-  } else if (timedOut) {
-    feedback = turnTimedOut
-      ? "Turn not detected. Select Walk-and-Turn to try again."
-      : "Time limit reached. Select Walk-and-Turn to try again.";
   } else if (state.phase === "waitingForTurn") {
-    feedback = "9 steps completed. Face to the side to continue.";
+    feedback =
+      "4 steps completed. Pivot to face the other direction, then face sideways again.";
   } else if (state.phase === "return") {
-    feedback = `Turn detected! Return steps: ${Math.max(0, state.stepCount - 9)} / 9`;
+    feedback = `Turn detected! Return steps: ${Math.max(
+      0,
+      state.stepCount - STEPS_BEFORE_TURN,
+    )} / 4`;
   } else {
-    feedback = `Steps completed: ${Math.min(state.stepCount, 9)} / 9`;
+    feedback = `Steps completed: ${Math.min(
+      state.stepCount,
+      STEPS_BEFORE_TURN,
+    )} / 4`;
   }
 
-  return makeResult(progress, score, complete || timedOut, detail, feedback);
+  return makeResult(progress, score, complete, detail, feedback);
 }
 
-function evaluateOneLegStand(
-  landmarks,
-  state,
-  metrics,
-  now,
-  width,
-  height,
-  elapsed,
-) {
+function evaluateOneLegStand(landmarks, state, metrics, now, width, height) {
   const lifts = getLiftAmounts(landmarks, state, metrics, width, height);
 
   const leftRaised = lifts.left > 0.14;
@@ -233,140 +243,158 @@ function evaluateOneLegStand(
   if (oneFootRaised) {
     if (state.holdStart === null) {
       state.holdStart = now;
+      state.raisedFrames = 0;
+      state.armsAtSideFrames = 0;
+      state.oneLegInterrupted = false;
     }
 
-    const currentHold = now - state.holdStart;
-    state.maxHoldMs = Math.max(state.maxHoldMs, currentHold);
     state.raisedFrames += 1;
 
     if (areArmsAtSides(landmarks, metrics, width, height)) {
       state.armsAtSideFrames += 1;
     }
-  } else {
+  } else if (state.holdStart !== null) {
     state.holdStart = null;
+    state.raisedFrames = 0;
+    state.armsAtSideFrames = 0;
+    state.oneLegInterrupted = true;
   }
 
   const currentHold = state.holdStart === null ? 0 : now - state.holdStart;
-  const holdRatio = clamp(state.maxHoldMs / ONE_LEG_TARGET_MS, 0, 1);
+
+  const holdRatio = clamp(currentHold / ONE_LEG_TARGET_MS, 0, 1);
+
   const armRatio =
     state.raisedFrames > 0 ? state.armsAtSideFrames / state.raisedFrames : 0;
 
   const score = holdRatio * 70 + armRatio * 30;
   const progress = holdRatio * 100;
   const complete = currentHold >= ONE_LEG_TARGET_MS;
-  const timedOut = elapsed >= ONE_LEG_TIMEOUT_MS;
 
   const detail = complete
-    ? "The raised-foot hold reached 30 seconds."
-    : "The one-leg stand time limit was reached.";
+    ? "The raised-foot hold reached 30 continuous seconds."
+    : "Keep one foot raised for a continuous 30-second hold.";
 
   let feedback;
 
   if (complete) {
     feedback = "Hold complete! You kept one foot raised for 30 seconds.";
-  } else if (timedOut) {
-    feedback = "Time limit reached. Select One-Leg Stand to try again.";
   } else if (!oneFootRaised) {
-    feedback =
-      state.maxHoldMs > 0
-        ? "Your foot came down. Raise one foot and hold it up again."
-        : "Raise one foot and keep it raised.";
+    feedback = state.oneLegInterrupted
+      ? "Your foot came down. Raise one foot and hold it up again."
+      : "Raise one foot and keep it raised.";
   } else if (!areArmsAtSides(landmarks, metrics, width, height)) {
-    feedback = `Keep your arms close to your sides. Hold: ${(currentHold / 1000).toFixed(1)} / 30 seconds`;
+    feedback = `Keep your arms close to your sides. Hold: ${(
+      currentHold / 1000
+    ).toFixed(1)} / 30 seconds`;
   } else {
-    feedback = `Good! Keep holding: ${(currentHold / 1000).toFixed(1)} / 30 seconds`;
+    feedback = `Good! Keep holding: ${(currentHold / 1000).toFixed(
+      1,
+    )} / 30 seconds`;
   }
 
-  return makeResult(progress, score, complete || timedOut, detail, feedback);
+  return makeResult(progress, score, complete, detail, feedback);
 }
 
-function evaluateRomberg(
-  landmarks,
-  state,
-  metrics,
-  now,
-  width,
-  height,
-  elapsed,
-) {
+function evaluateRomberg(landmarks, state, metrics, now, width, height) {
   const feetTogether = areFeetTogether(landmarks, metrics, width, height);
 
-  state.totalFrames += 1;
-
   if (feetTogether) {
+    if (state.holdStart === null) {
+      state.holdStart = now;
+      state.maxHoldMs = 0;
+      state.totalFrames = 0;
+      state.feetTogetherFrames = 0;
+      state.stableFrames = 0;
+      state.swayBaseline = null;
+      state.holdInterrupted = false;
+    }
+
+    const currentHold = now - state.holdStart;
+
+    state.maxHoldMs = Math.max(state.maxHoldMs, currentHold);
+
+    state.totalFrames += 1;
     state.feetTogetherFrames += 1;
+
     const swayRatio = getSwayRatio(metrics, state);
 
     if (swayRatio <= 0.14) {
       state.stableFrames += 1;
     }
+  } else if (state.holdStart !== null) {
+    const lastHold = now - state.holdStart;
 
-    if (state.holdStart === null) {
-      state.holdStart = now;
-    }
+    state.maxHoldMs = Math.max(state.maxHoldMs, lastHold);
 
-    state.maxHoldMs = Math.max(state.maxHoldMs, now - state.holdStart);
-  } else {
     state.holdStart = null;
+    state.swayBaseline = null;
+
+    if (state.maxHoldMs < ROMBERG_TARGET_MS) {
+      state.holdInterrupted = true;
+      state.maxHoldMs = 0;
+      state.totalFrames = 0;
+      state.feetTogetherFrames = 0;
+      state.stableFrames = 0;
+    }
   }
 
   const currentHold = state.holdStart === null ? 0 : now - state.holdStart;
+
   const holdRatio = clamp(state.maxHoldMs / ROMBERG_TARGET_MS, 0, 1);
+
   const feetRatio =
     state.totalFrames > 0 ? state.feetTogetherFrames / state.totalFrames : 0;
+
   const stableRatio =
     state.totalFrames > 0 ? state.stableFrames / state.totalFrames : 0;
 
   const score = holdRatio * 60 + feetRatio * 20 + stableRatio * 20;
+
   const progress = holdRatio * 100;
-  const complete = currentHold >= ROMBERG_TARGET_MS;
-  const timedOut = elapsed >= ROMBERG_TIMEOUT_MS;
+
+  const complete =
+    !feetTogether &&
+    state.holdStart === null &&
+    state.maxHoldMs >= ROMBERG_TARGET_MS;
 
   const detail = complete
-    ? "The feet-together balance hold reached 30 seconds."
-    : "The balance time limit was reached.";
+    ? "A 30-second feet-together hold was detected, followed by a return to a resting stance."
+    : "Hold your feet together for at least 30 seconds, then return to a resting stance.";
 
-  const swayRatio = feetTogether ? getSwayRatio(metrics, state) : Infinity;
   let feedback;
 
   if (complete) {
-    feedback = "Balance hold complete!";
-  } else if (timedOut) {
-    feedback = "Time limit reached. Select Romberg Balance to try again.";
+    feedback =
+      "Balance complete! Your return to a resting stance was detected.";
   } else if (!feetTogether) {
-    feedback = "Bring your feet together.";
-  } else if (swayRatio > 0.14) {
-    feedback = `Try to stay still. Hold: ${(currentHold / 1000).toFixed(1)} / 30 seconds`;
+    feedback = state.holdInterrupted
+      ? "You returned to a resting stance before 30 seconds. Bring your feet together and try again."
+      : "Bring your feet together to begin the 30-second hold.";
+  } else if (currentHold >= ROMBERG_TARGET_MS) {
+    feedback =
+      "When you think 30 seconds have passed, open your eyes and return to a natural resting stance.";
   } else {
-    feedback = `Good balance! Keep holding: ${(currentHold / 1000).toFixed(1)} / 30 seconds`;
+    feedback = `Close your eyes and stay as still as you can. Hold: ${(
+      currentHold / 1000
+    ).toFixed(1)} / 30 seconds`;
   }
 
-  return makeResult(progress, score, complete || timedOut, detail, feedback);
+  return makeResult(progress, score, complete, detail, feedback);
 }
 
-function evaluateFingerToNose(
-  landmarks,
-  state,
-  metrics,
-  now,
-  width,
-  height,
-  elapsed,
-) {
+function evaluateFingerToNose(landmarks, state, metrics, now, width, height) {
   const ratios = getFingerToNoseRatios(landmarks, metrics, width, height);
 
-  if (!ratios) {
-    const progress = Math.min(state.fingerTouches / FINGER_TARGET, 1) * 100;
-    const timedOut = elapsed >= FINGER_TIMEOUT_MS;
+  const progress = Math.min(state.fingerTouches / FINGER_TARGET, 1) * 100;
 
+  if (!ratios) {
     return makeResult(
       progress,
       progress,
-      timedOut,
-      "Fingertip landmarks were not consistently visible.",
-      timedOut
-        ? "Time limit reached. Select Finger to Nose to try again."
-        : "Move so your face and both index fingertips are visible.",
+      false,
+      "Fingertip landmarks are not consistently visible.",
+      "Move so your face and both index fingertips are visible.",
     );
   }
 
@@ -413,21 +441,20 @@ function evaluateFingerToNose(
     state.fingerPhase = "retreat";
   }
 
-  const progress = Math.min(state.fingerTouches / FINGER_TARGET, 1) * 100;
-  const score = progress;
+  const updatedProgress =
+    Math.min(state.fingerTouches / FINGER_TARGET, 1) * 100;
+
+  const score = updatedProgress;
   const complete = state.fingerTouches >= FINGER_TARGET;
-  const timedOut = elapsed >= FINGER_TIMEOUT_MS;
 
   const detail = complete
     ? "Four alternating finger-to-nose touches were detected."
-    : "The finger-to-nose time limit was reached.";
+    : "The finger-to-nose sequence is still in progress.";
 
   let feedback;
 
   if (complete) {
     feedback = "4 / 4 touches completed!";
-  } else if (timedOut) {
-    feedback = "Time limit reached. Select Finger to Nose to try again.";
   } else if (state.fingerPhase === "retreat") {
     feedback = `Touch detected: ${state.fingerTouches} / ${FINGER_TARGET}. Move your hand away.`;
   } else if (state.expectedSide) {
@@ -436,7 +463,7 @@ function evaluateFingerToNose(
     feedback = `Touches: ${state.fingerTouches} / ${FINGER_TARGET}. Move one finger away, then touch your nose.`;
   }
 
-  return makeResult(progress, score, complete || timedOut, detail, feedback);
+  return makeResult(updatedProgress, score, complete, detail, feedback);
 }
 
 export function evaluateTest(testName, landmarks, state, now, width, height) {
@@ -450,45 +477,15 @@ export function evaluateTest(testName, landmarks, state, now, width, height) {
     return null;
   }
 
-  if (state.startedAt === null) {
-    state.startedAt = now;
-  }
-
-  const elapsed = now - state.startedAt;
-
   switch (testName) {
     case "walkAndTurn":
-      return evaluateWalkAndTurn(
-        landmarks,
-        state,
-        metrics,
-        now,
-        width,
-        height,
-        elapsed,
-      );
+      return evaluateWalkAndTurn(landmarks, state, metrics, now, width, height);
 
     case "oneLegStand":
-      return evaluateOneLegStand(
-        landmarks,
-        state,
-        metrics,
-        now,
-        width,
-        height,
-        elapsed,
-      );
+      return evaluateOneLegStand(landmarks, state, metrics, now, width, height);
 
     case "romberg":
-      return evaluateRomberg(
-        landmarks,
-        state,
-        metrics,
-        now,
-        width,
-        height,
-        elapsed,
-      );
+      return evaluateRomberg(landmarks, state, metrics, now, width, height);
 
     case "fingerToNose":
       return evaluateFingerToNose(
@@ -498,7 +495,6 @@ export function evaluateTest(testName, landmarks, state, now, width, height) {
         now,
         width,
         height,
-        elapsed,
       );
 
     default:
