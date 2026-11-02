@@ -9,16 +9,40 @@
   </head>
   <body>
     <div class="instructions-container">
-      <h1 id="instructions">
-        Start a test to see the instructions!
-      </h1>
+      <h1 id="instructions">Start a test to see the instructions!</h1>
     </div>
 
     <div class="video-container">
       <video id="video" autoplay playsinline muted></video>
       <canvas id="pose-canvas"></canvas>
-      <div id="test-feedback">
-        Move into view so I can see your full body.
+
+      <div class="officer-layout">
+        <div class="test-feedback-bubble">
+          <div id="test-feedback" class="speech-bubble">
+            Move into view so I can see your full body.
+          </div>
+        </div>
+
+        <div class="officer-container">
+          <img
+            id="officer-good"
+            class="officer-image active"
+            src="images/officer/Happyofficer.png"
+            alt="Officer looking satisfied"
+          />
+          <img
+            id="officer-suspicious"
+            class="officer-image"
+            src="images/officer/Suspiciousofficer.png"
+            alt="Officer looking suspicious"
+          />
+          <img
+            id="officer-failing"
+            class="officer-image"
+            src="images/officer/Madofficer.png"
+            alt="Officer looking mad"
+          />
+        </div>
       </div>
     </div>
 

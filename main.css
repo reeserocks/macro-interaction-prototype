@@ -51,24 +51,59 @@ body {
   z-index: 1;
 }
 
-#test-feedback {
+.officer-layout {
   position: absolute;
   right: 1rem;
-  bottom: 1rem;
+  bottom: 0;
   z-index: 2;
-  width: min(280px, calc(100% - 2rem));
-  padding: 0.9rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.test-feedback-bubble {
+  width: 356px;
+  min-height: 0;
+  height: auto;
+  flex: 0 0 356px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: url("images/bubble.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
+#test-feedback {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  padding: 70px;
+  margin: 0;
+  background: transparent;
+  border: none;
   color: #000;
   font-size: clamp(0.9rem, 1.6vw, 1rem);
   line-height: 1.4;
   white-space: pre-line;
-  max-height: 45%;
-  overflow-y: auto;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  overflow-wrap: break-word;
+  box-shadow: none;
   pointer-events: none;
+}
+
+.officer-image {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom;
+}
+
+.officer-image.active {
+  display: block;
 }
 
 .tests-container {
@@ -95,10 +130,15 @@ body {
 }
 
 @media (max-width: 520px) {
+  .test-feedback-bubble {
+    width: 210px;
+    min-height: 125px;
+    flex-basis: 210px;
+  }
+
   #test-feedback {
-    right: 0.6rem;
-    bottom: 0.6rem;
-    width: min(230px, calc(100% - 1.2rem));
-    padding: 0.7rem 0.8rem;
+    min-height: 125px;
+    padding: 45px 35px;
+    font-size: 0.8rem;
   }
 }
