@@ -1,3 +1,4 @@
+
 import {
   FilesetResolver,
   PoseLandmarker,
@@ -28,6 +29,142 @@ const testItems = document.querySelectorAll("[data-test]");
 const drawingUtils = new DrawingUtils(canvasCtx);
 const scores = {};
 
+const officerImages = {
+  good: document.getElementById("officer-good"),
+  suspicious: document.getElementById("officer-suspicious"),
+  failing: document.getElementById("officer-failing"),
+};
+
+const backgroundAudio = new Audio("sounds/Police walkie-talkie.mp3");
+backgroundAudio.loop = true;
+backgroundAudio.volume = 0.5;
+
+const sirenAudio = new Audio("sounds/Police siren.mp3");
+sirenAudio.volume = 0.12;
+
+const passAudio = new Audio("sounds/Passed test sound.mp3");
+passAudio.volume = 1;
+
+const failAudio = new Audio("sounds/Short police siren.mp3");
+failAudio.volume = 1;
+
+let audioStarted = false;
+let currentOfficerState = "good";
+
+function playAudio(audio) {
+  const playback = audio.play();
+
+  if (playback) {
+    playback.catch((error) => {
+      console.warn("Audio playback failed:", error);
+    });
+  }
+}
+
+function startBackgroundAudio() {
+  if (audioStarted) {
+    return;
+  }
+
+  audioStarted = true;
+  playAudio(backgroundAudio);
+
+  console.log("Background audio started.");
+  console.log(backgroundAudio);
+}
+
+function stopSiren() {
+  sirenAudio.pause();
+  sirenAudio.currentTime = 0;
+}
+
+function playFailureSound() {
+  stopSiren();
+  failAudio.currentTime = 0;
+  playAudio(failAudio);
+}
+
+function playPassSound() {
+  passAudio.currentTime = 0;
+  playAudio(passAudio);
+}
+
+const speechSupported =
+  "speechSynthesis" in window &&
+  "SpeechSynthesisUtterance" in window;
+
+let lastSpokenFeedback = "";
+
+function speakFeedback(text) {
+  if (!speechSupported || !text.trim()) {
+    return;
+  }
+
+  const speechText = text
+    .replace(/\n+/g, ". ")
+    .replace(
+      /(?:Hold|Keep holding): \d+(?:\.\d+)? \/ 30 seconds/g,
+      "Keep holding for 30 seconds",
+    );
+
+  if (speechText === lastSpokenFeedback) {
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(speechText);
+
+  utterance.lang = "en-US";
+  utterance.rate = 0.95;
+  utterance.pitch = 0.85;
+  utterance.volume = 1;
+
+  window.speechSynthesis.speak(utterance);
+
+  lastSpokenFeedback = speechText;
+}
+
+function setFeedback(text) {
+  feedbackElement.textContent = text;
+  speakFeedback(text);
+}
+
+function setOfficerState(state) {
+  for (const [name, image] of Object.entries(officerImages)) {
+    image.classList.toggle("active", name === state);
+  }
+
+  currentOfficerState = state;
+
+  if (state === "suspicious") {
+    sirenAudio.loop = true;
+    sirenAudio.volume = 0.12;
+
+    if (sirenAudio.paused) {
+      playAudio(sirenAudio);
+    }
+  } else {
+    stopSiren();
+  }
+}
+
+function updateOfficerState(result) {
+  if (!result) {
+    return;
+  }
+
+  if (result.done) {
+    setOfficerState(result.passed ? "good" : "failing");
+  } else if (result.progress >= 60) {
+    setOfficerState("good");
+  } else if (result.progress > 0) {
+    setOfficerState("suspicious");
+  } else {
+    setOfficerState("good");
+  }
+}
+
 let lastVideoTime = -1;
 let missingPoseFrames = 0;
 let currentTest = "walkAndTurn";
@@ -43,9 +180,12 @@ function setCurrentTest(testName) {
 
   currentTest = testName;
   testState = createTestState(currentTest);
+  lastSpokenFeedback = "";
 
+  stopSiren();
   instructionsElement.textContent = TEST_INFO[currentTest].instructions;
-  feedbackElement.textContent = TEST_INFO[currentTest].startMessage;
+  setFeedback(TEST_INFO[currentTest].startMessage);
+  setOfficerState("good");
 }
 
 function recordResult(result) {
@@ -64,24 +204,27 @@ function recordResult(result) {
 
   scores[currentTest] = record;
 
-  console.log(`[${TEST_INFO[currentTest].label}] ${record.result}`);
-  console.log(`Movement completion score: ${record.scorePercent}%`);
-  console.log(`Score shortfall: ${record.failPercent}%`);
-  console.log(record.detail);
+  if (result.passed) {
+    playPassSound();
+  } else {
+    playFailureSound();
+  }
 
   const nextStep =
     record.result === "PASS"
       ? "Select another test or select this one to retry."
       : "Select this test to try again, or choose another test.";
 
-  feedbackElement.textContent = [
-    `${TEST_INFO[currentTest].label} — ${record.result}`,
-    `Movement completion score: ${record.scorePercent}%`,
-    `Score shortfall: ${record.failPercent}%`,
-    record.detail,
-    "",
-    nextStep,
-  ].join("\n");
+  setFeedback(
+    [
+      `${TEST_INFO[currentTest].label} — ${record.result}`,
+      `Movement completion score: ${record.scorePercent}%`,
+      `Score shortfall: ${record.failPercent}%`,
+      record.detail,
+      "",
+      nextStep,
+    ].join("\n"),
+  );
 
   console.table(scores);
 }
@@ -91,8 +234,10 @@ function handleEvaluation(result) {
     return;
   }
 
-  if (result.feedback) {
-    feedbackElement.textContent = result.feedback;
+  updateOfficerState(result);
+
+  if (result.feedback && !result.done) {
+    setFeedback(result.feedback);
   }
 
   const bucket = Math.floor(result.progress / 10);
@@ -188,7 +333,8 @@ function renderLoop() {
       missingPoseFrames += 1;
 
       if (missingPoseFrames === 15 && !testState.done) {
-        feedbackElement.textContent = "Move into view so I can see your pose.";
+        setFeedback("Move into view so I can see your pose.");
+        setOfficerState("suspicious");
       }
     }
 
@@ -218,3 +364,4 @@ window.setCurrentTest = setCurrentTest;
 window.getTestScores = () => ({ ...scores });
 
 startCamera();
+startBackgroundAudio();
