@@ -25,6 +25,8 @@ const canvasElement = document.getElementById("pose-canvas");
 const canvasCtx = canvasElement.getContext("2d");
 const instructionsElement = document.getElementById("instructions");
 const feedbackElement = document.getElementById("test-feedback");
+const policeLightsOverlay = document.getElementById("police-lights-overlay");
+const instructionVideoElement = document.getElementById("instruction-video");
 
 const drawingUtils = new DrawingUtils(canvasCtx);
 const scores = {};
@@ -182,15 +184,20 @@ function setFeedback(text) {
 }
 
 function setOfficerState(state) {
-  if (state === currentOfficerState) {
-    return;
-  }
-
   for (const [name, image] of Object.entries(officerImages)) {
     image.classList.toggle("active", name === state);
   }
 
+  policeLightsOverlay.classList.toggle("suspicious", state === "suspicious");
+
+  policeLightsOverlay.classList.toggle("failing", state === "failing");
+
+  const stateChanged = currentOfficerState !== state;
   currentOfficerState = state;
+
+  if (!stateChanged) {
+    return;
+  }
 
   if (state === "suspicious") {
     sirenAudio.loop = true;
@@ -235,11 +242,7 @@ function startTest(testName) {
   lastSpokenFeedback = "";
 
   stopSiren();
-  currentOfficerState = "good";
-
-  for (const [name, image] of Object.entries(officerImages)) {
-    image.classList.toggle("active", name === "good");
-  }
+  setOfficerState("good");
 
   instructionsElement.textContent = TEST_INFO[currentTest].instructions;
   setFeedback(TEST_INFO[currentTest].startMessage);
@@ -360,7 +363,9 @@ async function startCamera() {
     );
 
     video.srcObject = stream;
-    await video.play();
+    instructionVideoElement.srcObject = stream;
+
+    await Promise.all([video.play(), instructionVideoElement.play()]);
   } catch (error) {
     console.error("Unable to start camera:", error);
   }

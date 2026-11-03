@@ -15,7 +15,7 @@
           <p>
             Think you had too many drinks at that party? Don't worry, we've got
             you covered. Let's put your sobriety to the test and see if you're
-            ready to get behind the wheel.
+            really ready to drive home.
           </p>
           <p>Please stand where the camera can see your full body.</p>
           <button id="start-button" type="button">START</button>
@@ -23,6 +23,15 @@
       </section>
 
       <section id="instruction-screen" class="screen information-screen" hidden>
+        <video
+          id="instruction-video"
+          autoplay
+          playsinline
+          muted
+        ></video>
+
+        <div class="instruction-camera-overlay"></div>
+
         <div class="information-content">
           <p class="screen-eyebrow">NEXT CHALLENGE</p>
           <h1 id="test-instruction-title"></h1>
@@ -45,6 +54,12 @@
 
         <div class="video-container">
           <video id="video" autoplay playsinline muted></video>
+          <img
+            id="police-lights-overlay"
+            class="police-lights-overlay"
+            src="images/police-lights.gif"
+            alt="police lights flashing"
+          />
           <canvas id="pose-canvas"></canvas>
 
           <div class="officer-layout">
