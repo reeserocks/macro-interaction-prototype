@@ -1,4 +1,3 @@
-
 import {
   FilesetResolver,
   PoseLandmarker,
@@ -6,6 +5,8 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs";
 
 import { createTestState, evaluateTest, TEST_INFO } from "./test_evaluators.js";
+
+import { createScreenManager } from "./screen_manager.js";
 
 const vision = await FilesetResolver.forVisionTasks(
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
@@ -24,7 +25,6 @@ const canvasElement = document.getElementById("pose-canvas");
 const canvasCtx = canvasElement.getContext("2d");
 const instructionsElement = document.getElementById("instructions");
 const feedbackElement = document.getElementById("test-feedback");
-const testItems = document.querySelectorAll("[data-test]");
 
 const drawingUtils = new DrawingUtils(canvasCtx);
 const scores = {};
@@ -50,6 +50,12 @@ failAudio.volume = 1;
 
 let audioStarted = false;
 let currentOfficerState = "good";
+let activeTest = false;
+let currentTest = "walkAndTurn";
+let testState = null;
+let lastVideoTime = -1;
+let missingPoseFrames = 0;
+let lastSpokenFeedback = "";
 
 function playAudio(audio) {
   const playback = audio.play();
@@ -66,11 +72,15 @@ function startBackgroundAudio() {
     return;
   }
 
-  audioStarted = true;
-  playAudio(backgroundAudio);
-
-  console.log("Background audio started.");
-  console.log(backgroundAudio);
+  backgroundAudio
+    .play()
+    .then(() => {
+      audioStarted = true;
+      console.log("Background audio is playing.");
+    })
+    .catch((error) => {
+      console.error("Background audio failed:", error);
+    });
 }
 
 function stopSiren() {
@@ -90,10 +100,51 @@ function playPassSound() {
 }
 
 const speechSupported =
-  "speechSynthesis" in window &&
-  "SpeechSynthesisUtterance" in window;
+  "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 
-let lastSpokenFeedback = "";
+function stopSpeaking() {
+  if (speechSupported) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+function speakAnnouncement(text) {
+  if (!speechSupported || !text.trim()) {
+    return Promise.resolve();
+  }
+
+  stopSpeaking();
+
+  return new Promise((resolve) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    let finished = false;
+
+    const fallbackTimer = setTimeout(
+      finish,
+      Math.max(15000, text.length * 200),
+    );
+
+    function finish() {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+      clearTimeout(fallbackTimer);
+      resolve();
+    }
+
+    utterance.lang = "en-US";
+    utterance.rate = 0.95;
+    utterance.pitch = 0.85;
+    utterance.volume = 1;
+    utterance.onend = finish;
+    utterance.onerror = finish;
+
+    window.speechSynthesis.speak(utterance);
+  });
+}
 
 function speakFeedback(text) {
   if (!speechSupported || !text.trim()) {
@@ -111,7 +162,7 @@ function speakFeedback(text) {
     return;
   }
 
-  window.speechSynthesis.cancel();
+  stopSpeaking();
 
   const utterance = new SpeechSynthesisUtterance(speechText);
 
@@ -131,6 +182,10 @@ function setFeedback(text) {
 }
 
 function setOfficerState(state) {
+  if (state === currentOfficerState) {
+    return;
+  }
+
   for (const [name, image] of Object.entries(officerImages)) {
     image.classList.toggle("active", name === state);
   }
@@ -165,31 +220,64 @@ function updateOfficerState(result) {
   }
 }
 
-let lastVideoTime = -1;
-let missingPoseFrames = 0;
-let currentTest = "walkAndTurn";
-let testState = createTestState(currentTest);
+function stopTest() {
+  activeTest = false;
+  stopSiren();
+}
 
-function setCurrentTest(testName) {
-  if (!TEST_INFO[testName]) {
-    console.error(
-      "Unknown test name. Use walkAndTurn, oneLegStand, romberg, or fingerToNose.",
-    );
-    return;
-  }
-
+function startTest(testName) {
   currentTest = testName;
   testState = createTestState(currentTest);
+
+  activeTest = true;
+  lastVideoTime = -1;
+  missingPoseFrames = 0;
   lastSpokenFeedback = "";
 
   stopSiren();
+  currentOfficerState = "good";
+
+  for (const [name, image] of Object.entries(officerImages)) {
+    image.classList.toggle("active", name === "good");
+  }
+
   instructionsElement.textContent = TEST_INFO[currentTest].instructions;
   setFeedback(TEST_INFO[currentTest].startMessage);
-  setOfficerState("good");
 }
 
+function handleTestResult(result) {
+  if (result.result === "PASS") {
+    playPassSound();
+  } else {
+    playFailureSound();
+  }
+}
+
+function resetScores() {
+  for (const testName of Object.keys(scores)) {
+    delete scores[testName];
+  }
+
+  testState = null;
+  activeTest = false;
+  currentTest = "walkAndTurn";
+  lastSpokenFeedback = "";
+  stopSiren();
+  stopSpeaking();
+}
+
+const screenManager = createScreenManager({
+  onStartAudio: startBackgroundAudio,
+  onStartTest: startTest,
+  onStopTest: stopTest,
+  onTestResult: handleTestResult,
+  onReset: resetScores,
+  speak: speakAnnouncement,
+  stopSpeaking,
+});
+
 function recordResult(result) {
-  if (!result || !result.done || testState.done) {
+  if (!result || !result.done || !testState || testState.done) {
     return;
   }
 
@@ -204,29 +292,12 @@ function recordResult(result) {
 
   scores[currentTest] = record;
 
-  if (result.passed) {
-    playPassSound();
-  } else {
-    playFailureSound();
-  }
+  console.log(`[${TEST_INFO[currentTest].label}] ${record.result}`);
+  console.log(`Movement completion score: ${record.scorePercent}%`);
+  console.log(`Score shortfall: ${record.failPercent}%`);
+  console.log(record.detail);
 
-  const nextStep =
-    record.result === "PASS"
-      ? "Select another test or select this one to retry."
-      : "Select this test to try again, or choose another test.";
-
-  setFeedback(
-    [
-      `${TEST_INFO[currentTest].label} — ${record.result}`,
-      `Movement completion score: ${record.scorePercent}%`,
-      `Score shortfall: ${record.failPercent}%`,
-      record.detail,
-      "",
-      nextStep,
-    ].join("\n"),
-  );
-
-  console.table(scores);
+  screenManager.showTestResult(currentTest, record);
 }
 
 function handleEvaluation(result) {
@@ -283,7 +354,6 @@ async function startCamera() {
       "loadeddata",
       () => {
         resizeCanvasToVideo();
-        setCurrentTest(currentTest);
         renderLoop();
       },
       { once: true },
@@ -297,7 +367,11 @@ async function startCamera() {
 }
 
 function renderLoop() {
-  if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+  if (
+    activeTest &&
+    video.readyState >= 2 &&
+    video.currentTime !== lastVideoTime
+  ) {
     const now = performance.now();
     const results = poseLandmarker.detectForVideo(video, now);
 
@@ -344,24 +418,10 @@ function renderLoop() {
   requestAnimationFrame(renderLoop);
 }
 
-function chooseTestFromItem(item) {
-  const testName = item.dataset.test;
-  setCurrentTest(testName);
-}
+window.setCurrentTest = (testName) => {
+  screenManager.requestTest(testName);
+};
 
-for (const item of testItems) {
-  item.addEventListener("click", () => chooseTestFromItem(item));
-
-  item.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      chooseTestFromItem(item);
-    }
-  });
-}
-
-window.setCurrentTest = setCurrentTest;
 window.getTestScores = () => ({ ...scores });
 
 startCamera();
-startBackgroundAudio();

@@ -3,56 +3,137 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Macro Interaction Prototype</title>
+    <title>Field Test Challenge</title>
     <link rel="stylesheet" href="main.css" />
     <script type="module" src="script.js"></script>
   </head>
   <body>
-    <div class="instructions-container">
-      <h1 id="instructions">Start a test to see the instructions!</h1>
-    </div>
+    <main class="app-shell">
+      <section id="title-screen" class="screen title-screen">
+        <div class="title-content">
+          <h1>FIELD SOBRIETY CHALLENGE</h1>
+          <p>
+            Think you had too many drinks at that party? Don't worry, we've got
+            you covered. Let's put your sobriety to the test and see if you're
+            ready to get behind the wheel.
+          </p>
+          <p>Please stand where the camera can see your full body.</p>
+          <button id="start-button" type="button">START</button>
+        </div>
+      </section>
 
-    <div class="video-container">
-      <video id="video" autoplay playsinline muted></video>
-      <canvas id="pose-canvas"></canvas>
-
-      <div class="officer-layout">
-        <div class="test-feedback-bubble">
-          <div id="test-feedback" class="speech-bubble">
-            Move into view so I can see your full body.
+      <section id="instruction-screen" class="screen information-screen" hidden>
+        <div class="information-content">
+          <p class="screen-eyebrow">NEXT CHALLENGE</p>
+          <h1 id="test-instruction-title"></h1>
+          <p id="test-instruction-text"></p>
+          <div class="instruction-actions">
+            <p
+              id="instruction-countdown"
+              class="countdown-status"
+              role="timer"
+            ></p>
+            <button id="begin-test-button" type="button">Begin test</button>
           </div>
         </div>
+      </section>
 
-        <div class="officer-container">
-          <img
-            id="officer-good"
-            class="officer-image active"
-            src="images/officer/Happyofficer.png"
-            alt="Officer looking satisfied"
-          />
-          <img
-            id="officer-suspicious"
-            class="officer-image"
-            src="images/officer/Suspiciousofficer.png"
-            alt="Officer looking suspicious"
-          />
-          <img
-            id="officer-failing"
-            class="officer-image"
-            src="images/officer/Madofficer.png"
-            alt="Officer looking mad"
-          />
+      <section id="active-test-screen" class="screen active-test-screen" hidden>
+        <div class="instructions-container">
+          <h1 id="instructions">Get ready!</h1>
+        </div>
+
+        <div class="video-container">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="pose-canvas"></canvas>
+
+          <div class="officer-layout">
+            <div class="test-feedback-bubble">
+              <div id="test-feedback" class="speech-bubble">
+                Move into view so I can see your full body.
+              </div>
+            </div>
+
+            <div class="officer-container">
+              <img
+                id="officer-good"
+                class="officer-image active"
+                src="images/officer/Happyofficer.png"
+                alt="Officer looking satisfied"
+              />
+              <img
+                id="officer-suspicious"
+                class="officer-image"
+                src="images/officer/Suspiciousofficer.png"
+                alt="Officer looking suspicious"
+              />
+              <img
+                id="officer-failing"
+                class="officer-image"
+                src="images/officer/Madofficer.png"
+                alt="Officer looking mad"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="result-screen" class="screen information-screen" hidden>
+        <div class="information-content">
+          <p class="screen-eyebrow">TEST COMPLETE</p>
+          <h1 id="test-result-heading"></h1>
+          <p id="test-result-score"></p>
+          <p id="test-result-detail"></p>
+          <button id="result-continue-button" type="button">CONTINUE</button>
+        </div>
+      </section>
+
+      <section
+        id="final-results-screen"
+        class="screen information-screen"
+        hidden
+      >
+        <div class="information-content final-results-content">
+          <p class="screen-eyebrow">ASSESSMENT COMPLETE</p>
+          <h1 id="overall-result-heading"></h1>
+          <p id="overall-result-message"></p>
+          <ul id="overall-results-list"></ul>
+          <p class="results-rule">
+            Overall PASS requires passing all four individual tests.
+          </p>
+          <button id="restart-button" type="button">RESTART ASSESSMENT</button>
+        </div>
+      </section>
+
+      <nav id="test-navigation" class="tests-container" hidden>
+        <ul>
+          <li>
+            <button type="button" data-test="walkAndTurn">Walk-and-Turn</button>
+          </li>
+          <li>
+            <button type="button" data-test="oneLegStand">One-Leg Stand</button>
+          </li>
+          <li>
+            <button type="button" data-test="romberg">Romberg Balance</button>
+          </li>
+          <li>
+            <button type="button" data-test="fingerToNose">
+              Finger to Nose
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </main>
+
+    <div id="app-modal" class="modal-overlay" hidden>
+      <div class="modal-content" role="dialog">
+        <h2 id="modal-title"></h2>
+        <p id="modal-message"></p>
+        <div class="modal-buttons">
+          <button id="modal-cancel-button" type="button">CANCEL</button>
+          <button id="modal-confirm-button" type="button">SWITCH TEST</button>
         </div>
       </div>
-    </div>
-
-    <div class="tests-container">
-      <ul>
-        <li data-test="walkAndTurn" tabindex="0">Walk-and-Turn</li>
-        <li data-test="oneLegStand" tabindex="0">One-Leg Stand</li>
-        <li data-test="romberg" tabindex="0">Romberg Balance</li>
-        <li data-test="fingerToNose" tabindex="0">Finger to Nose</li>
-      </ul>
     </div>
   </body>
 </html>
