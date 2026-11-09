@@ -478,6 +478,7 @@ button {
   justify-content: center;
   width: var(--bubble-w);
   background: url("images/bubble.png") center / 100% 100% no-repeat;
+  overflow-y: hidden;
 }
 
 #test-feedback {
